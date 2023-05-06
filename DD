@@ -1,0 +1,197 @@
+class DD:
+  """
+  class for applying feature enginearing on
+  descriptors data while keeping it clean
+
+  ...
+
+  Attributes
+  ----------
+  data : pd.DataFrame
+      a dataframe containing the descriptors
+
+  Methods
+  -------
+  frequency_filter_cntr(l, freq=0.9)
+    evaluates if the column passes constant criteria by counting the number of 
+    non unique values frequencies
+     
+
+  drop_cols(rej_cols, axis=1, inplace=True):
+    drops columns from the original dataframe file
+
+  
+  remove_corr_cols(thresh: float, return_cols=False):
+    drops columns with correlation higher than the threshold
+
+
+  remove_constant_cols(return_cols=False):
+    drops columns containing lots of constants values in them
+
+  save(file_path='', file_name='X.csv', mode='wt', **args):
+    save dataframe as a custom file
+  """
+
+  def __init__(self, df):
+    self.data = df
+    self.remove_str_cols()
+
+  def remove_str_cols(self):
+    # removing text containing cols
+    str_cols = [col for col in self.data.columns if self.data[col].dtype == 'object']
+    self.drop_cols(str_cols)
+
+
+  def __str__(self):
+    return f"a dataframe with {self.data.shape[0]} molecules and {self.data.shape[1]} descriptors"
+
+
+  def drop_cols(self, rej_cols, axis=1, inplace=True):
+    """
+    drops columns from the original dataframe file
+
+    RAISES
+    ------
+    TypeError
+      if all elements in `rej_cols` type is not str 
+    """
+    if all(type(col) == str for col in rej_cols) and len(rej_cols) != 0:
+      self.data.drop(columns=rej_cols, axis=axis, inplace=inplace)
+    else:
+      if len(rej_cols) != 0:
+        raise TypeError('all elements in rej_cols list must be of the type str')
+      else:
+        raise IndexError('list can not be empty')
+
+  
+  def feature_normalization(self):
+    mu = np.mean(self.data, axis=0)
+    std = np.std(self.data, axis=0)
+    return (self.data - mu) / std
+
+  
+  def head(self, **args):
+    return self.data.head(**args)
+
+  def tail(self, **args):
+    return self.data.tail(**args)
+
+
+  @staticmethod
+  def frequency_filter_cntr(l, freq=0.9):
+    """
+    evaluates if the column passes constant criteria by counting the number of 
+    non unique values frequencies
+
+    PARAMETERS
+    ----------
+    `l`:
+      list of the values of the selected column
+    
+    `freq`: float, optional
+      criteria for rejecting the column or not based on non unique (default is 0.9)
+    """
+    if freq < 0.5:
+        raise ValueError("frequency should be more than 0.5")
+
+    non_unique_freq = 0
+    current = None
+    for i in l:
+        if non_unique_freq == 0:
+            current = i
+            non_unique_freq += 1
+            continue
+
+        if i == current:
+            non_unique_freq += 1
+        else:
+            non_unique_freq -= 1
+
+    if (float(non_unique_freq) / len(l)) >=  (2 * freq - 1):
+      return True
+    return False
+
+
+  def remove_corr_cols(self, thresh: float, return_cols=False):
+    """
+    drops columns with correlation higher than the threshold
+    
+    PARAMETERS
+    ----------
+    `thresh`: float
+      removing columns based on this threshold
+
+    `return_cols`: bool, optional
+      if set to True then selected columns will be returned (default is False)
+
+
+    RETURNS
+    -------
+    if `return_cols` is set to `True` then selected columns will be returned 
+    """
+    R = self.data.corr().to_numpy()
+    R_mean = np.mean(R, axis=1).reshape(1, self.data.shape[1]) ** 2
+    valid_indices = [np.where(R[:, index] > thresh)[0] for index in range(R.shape[1])]
+    selected_indices = set()
+    for candid_idx in valid_indices:
+      R_mean_sel = R_mean[0, candid_idx]
+      if R_mean_sel.shape != (1, 0): # not allow an empty list
+        selected_indices.add(self.data.columns[candid_idx[np.argmax(R_mean_sel)]])
+    
+    # 
+    self.drop_cols(list(selected_indices))
+    # 
+    if return_cols:
+      return list(selected_indices)
+
+
+  def remove_constant_cols(self, return_cols=False):
+    """
+    drops columns containing lots of constants values in them
+    
+    PARAMETERS
+    ----------
+    `return_cols`:
+      if set to True then both rejected and selected columns
+      will be returned (default is False)
+
+
+    RETURNS
+    -------
+    if `return_cols` is set to `True` then both rejected columns
+    and selected columns will be returned 
+    """
+    rejected_cols = []
+    selected_cols = []
+    for col in self.data.columns:
+        if self.frequency_filter_cntr(self.data[col]):
+            rejected_cols.append(col)
+        else:
+            selected_cols.append(col)
+    
+    # drop rejected cols
+    self.drop_cols(rejected_cols)
+    # 
+    if return_cols:
+      return rejected_cols, selected_cols
+
+
+  def save(self, file_path='', file_name='X.csv', mode='wt', **args):
+    """
+    save dataframe as a custom file
+
+    PARAMETERS
+    ----------
+    `file_path`: str, optional
+      path of saving the file (default is '')
+
+    file_name: str, optional
+      name and format of the file (default is 'X.csv')
+
+    mode: str, optional
+      mode of file manipulation (default is 'wt')
+
+    """
+    with open(file_path + file_name, mode) as f:
+        f.write(self.data.to_csv(**args))
+    f.close()
